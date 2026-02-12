@@ -6,6 +6,7 @@
 package org.lineageos.updater.data.source.network
 
 import android.content.Context
+import android.os.SystemProperties
 import kotlinx.serialization.json.Json
 import okhttp3.OkHttpClient
 import okhttp3.Request
@@ -17,7 +18,13 @@ import java.util.concurrent.TimeUnit
 class UpdatesNetworkDataSource(private val context: Context) {
     private val serverUrl: String
         get() {
-            val base = context.getString(R.string.updater_server_url)
+            val hasGMS = SystemProperties.getBoolean("persist.sys.with_google_apps", false)
+            val urlResId = if (hasGMS) {
+                R.string.updater_server_url
+            } else {
+                R.string.updater_server_url_vanilla
+            }
+            val base = context.getString(urlResId)
             require(base.startsWith("https://")) {
                 "Update server URL must use HTTPS: $base"
             }
