@@ -186,4 +186,11 @@
     <string name="local_update_import_failure">Failed to import local update</string>
     <string name="local_update_import_install">Install</string>
     <string name="local_update_name">Local update</string>
+
+    <!-- Updater -->
+    <string name="updater_link_telegram">Telegram</string>
+    <string name="updater_link_donate">Donate</string>
+    <string name="updater_link_forum">Forum</string>
+    <string name="updater_build_unofficial">Unofficial</string>
+    <string name="updater_maintainer_by">by <xliff:g id="maintainer" example="Ghosuto">%1$s</xliff:g></string>
 </resources>
