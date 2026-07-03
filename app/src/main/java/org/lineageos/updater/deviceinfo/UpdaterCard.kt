@@ -6,9 +6,13 @@
 
 package org.lineageos.updater.deviceinfo
 
-import android.graphics.RuntimeShader
+import android.graphics.Bitmap
+import android.graphics.BitmapFactory
+import android.util.LruCache
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
+import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -20,21 +24,29 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.setValue
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.produceState
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.drawWithCache
+import androidx.compose.ui.draw.blur
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.ColorFilter
-import androidx.compose.ui.graphics.ShaderBrush
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.Shape
-import androidx.compose.ui.graphics.toArgb
-import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.res.colorResource
-import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontFamily
@@ -47,151 +59,26 @@ import com.android.settingslib.spa.framework.theme.SettingsShape.CornerExtraLarg
 import com.android.settingslib.spa.framework.theme.SettingsSpace
 import com.android.settingslib.spa.framework.theme.SettingsTheme
 import org.lineageos.updater.R
-import kotlin.math.max
-import kotlin.math.roundToInt
+import java.io.IOException
+import java.net.HttpURLConnection
+import java.net.URL
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.withContext
+import kotlin.random.Random
 
-// Brand guide: "Mark height based on text x-height". Approximate Roboto x-height from font size.
-private const val MARK_X_HEIGHT_RATIO = 0.55f
+private const val WALLPAPER_SCRIM_ALPHA = 0.4f
+private const val WALLPAPER_BLUR_DP = 30
+private const val PICSUM_WIDTH = 480
+private const val PICSUM_HEIGHT = 480
+private const val NETWORK_TIMEOUT_MS = 8_000
+private const val BITMAP_CACHE_SIZE = 4
+private const val WALLPAPER_FADE_IN_MS = 450
+private const val WALLPAPER_ROTATE_INTERVAL_MS = 60_000L
 
-// Brand guide: "Do not warp, transform". Derive width from height to keep logo proportions.
-private const val MARK_WIDTH_MULTIPLIER = 2.5f
+private val bitmapCache = LruCache<String, Bitmap>(BITMAP_CACHE_SIZE)
 
-// Brand guide: "higher numbers' lower edges". Scale the gap from the mark, not a fixed dp.
-private const val VERSION_MARK_SPACING_RATIO = 0.10f
-
-// Pattern: preferred circle radius before snapping the pattern to the card height.
-private const val PATTERN_BASE_RADIUS_DP = 25
-
-// Pattern: keep each tile proportional to the circle radius on every screen size.
-private const val PATTERN_TILE_RADIUS_RATIO = 6f
-
-private const val PATTERN_SHADER_SRC =
-    """ uniform float iTileSize;
-    uniform float iRadius;
-    uniform float2 iResolution;
-    layout(color) uniform half4 iPatternColor;
-    layout(color) uniform half4 iSheenColor;
-
-    float circleAlpha(float2 point, float2 center, float radius) {
-        return smoothstep(radius + 1.0, radius - 1.0, length(point - center));
-    }
-
-    float bottomSemiAlpha(float2 point, float2 center, float radius) {
-        return circleAlpha(point, center, radius) * step(center.y, point.y);
-    }
-
-    float rightSemiAlpha(float2 point, float2 center, float radius) {
-        return circleAlpha(point, center, radius) * step(center.x, point.x);
-    }
-
-    half4 main(float2 fragCoord) {
-        float tileSize = iTileSize;
-        float radius = iRadius;
-        float2 local = mod(fragCoord, tileSize);
-        float hit = 0.0;
-
-        /* Accumulate coverage from this tile and its 8 neighbours. */
-        for (int dy = -1; dy <= 1; dy++) {
-            for (int dx = -1; dx <= 1; dx++) {
-                float2 point = local - float2(float(dx), float(dy)) * tileSize;
-
-                /* Full circles. */
-                hit = max(hit, circleAlpha(point, float2(tileSize / 3.0, 0.0), radius));
-                hit = max(
-                    hit,
-                    circleAlpha(point, float2(tileSize * 2.0 / 3.0, tileSize / 3.0), radius)
-                );
-                hit = max(hit, circleAlpha(point, float2(0.0, tileSize * 2.0 / 3.0), radius));
-
-                /* Bottom semicircles. */
-                hit = max(
-                    hit,
-                    bottomSemiAlpha(
-                        point,
-                        float2(tileSize / 3.0, tileSize * 2.0 / 3.0),
-                        radius
-                    )
-                );
-                hit = max(hit, bottomSemiAlpha(point, float2(tileSize * 2.0 / 3.0, 0.0), radius));
-                hit = max(
-                    hit,
-                    bottomSemiAlpha(point, float2(0.0, tileSize / 3.0), radius)
-                );
-                hit = max(
-                    hit,
-                    bottomSemiAlpha(point, float2(tileSize / 2.0, tileSize / 2.0), radius)
-                );
-                hit = max(
-                    hit,
-                    bottomSemiAlpha(
-                        point,
-                        float2(tileSize * 5.0 / 6.0, tileSize * 5.0 / 6.0),
-                        radius
-                    )
-                );
-                hit = max(
-                    hit,
-                    bottomSemiAlpha(point, float2(tileSize / 6.0, tileSize / 6.0), radius)
-                );
-
-                /* Right semicircles. */
-                hit = max(
-                    hit,
-                    rightSemiAlpha(point, float2(tileSize / 2.0, tileSize * 5.0 / 6.0), radius)
-                );
-                hit = max(
-                    hit,
-                    rightSemiAlpha(point, float2(tileSize * 5.0 / 6.0, tileSize / 6.0), radius)
-                );
-                hit = max(
-                    hit,
-                    rightSemiAlpha(point, float2(tileSize / 6.0, tileSize / 2.0), radius)
-                );
-                hit = max(
-                    hit,
-                    rightSemiAlpha(
-                        point,
-                        float2(tileSize * 2.0 / 3.0, tileSize * 2.0 / 3.0),
-                        radius
-                    )
-                );
-                hit = max(hit, rightSemiAlpha(point, float2(0.0, 0.0), radius));
-                hit = max(
-                    hit,
-                    rightSemiAlpha(point, float2(tileSize / 3.0, tileSize / 3.0), radius)
-                );
-            }
-        }
-
-        /* Layer 1 — tiled shapes at 10% opacity. */
-        float patternAlpha = 0.10 * hit * iPatternColor.a;
-        half4 pattern = half4(iPatternColor.rgb * patternAlpha, patternAlpha);
-
-        /*
-         * Layer 2 — linear sheen, clipped to the same pattern coverage.
-         * The extra 16% multiplier matches the exported design opacity.
-         */
-        float2 gradEnd = float2(iResolution.x * 1.0314, iResolution.y * 0.9208);
-        float2 dir = gradEnd;
-        float t = clamp(dot(fragCoord, dir) / dot(dir, dir), 0.0, 1.0);
-
-        float gradAlpha;
-        if (t <= 0.326923) {
-            gradAlpha = 0.16;
-        } else if (t <= 0.66) {
-            gradAlpha = mix(0.16, 1.0, (t - 0.326923) / (0.66 - 0.326923));
-        } else {
-            gradAlpha = mix(1.0, 0.08, (t - 0.66) / (1.0 - 0.66));
-        }
-
-        float sheenAlpha = gradAlpha * 0.16 * hit * iSheenColor.a;
-        half4 sheen = half4(iSheenColor.rgb * sheenAlpha, sheenAlpha);
-
-        /* Composite sheen over the base pattern. */
-        return sheen + pattern * (1.0 - sheen.a);
-    }
-"""
-
+@OptIn(ExperimentalMaterial3ExpressiveApi::class)
 @Composable
 fun UpdaterCard(
     buildVersion: String,
@@ -203,30 +90,19 @@ fun UpdaterCard(
     maintainer: String? = null,
     device: String? = null,
 ) {
-    val brandColor = colorResource(R.color.brand_primary)
     val onBrandColor = colorResource(R.color.on_brand_surface)
-    val patternColor = colorResource(R.color.brand_pattern)
-    val sheenColor = colorResource(R.color.brand_sheen)
+    var picsumSeed by rememberSaveable { mutableIntStateOf(Random.nextInt(Int.MAX_VALUE)) }
+    val wallpaperUrl = "https://picsum.photos/seed/$picsumSeed/$PICSUM_WIDTH/$PICSUM_HEIGHT"
+
+    LaunchedEffect(Unit) {
+        while (true) {
+            delay(WALLPAPER_ROTATE_INTERVAL_MS)
+            picsumSeed = Random.nextInt(Int.MAX_VALUE)
+        }
+    }
 
     val density = LocalDensity.current
     val displayLarge = MaterialTheme.typography.displayLarge
-
-    val versionStyle = remember(displayLarge) {
-        /*
-         * Brand guide: "Roboto Light version text, spaced in 8%".
-         */
-        displayLarge.copy(
-            fontFamily = FontFamily.SansSerif,
-            fontWeight = FontWeight.Light,
-            letterSpacing = (-0.08).em,
-            lineHeight = displayLarge.fontSize,
-        )
-    }
-
-    val markHeight = remember(versionStyle, density) {
-        with(density) { (versionStyle.fontSize.toPx() * MARK_X_HEIGHT_RATIO).toDp() }
-    }
-    val markWidth = markHeight * MARK_WIDTH_MULTIPLIER
 
     Card(
         modifier = modifier.fillMaxWidth(),
@@ -239,12 +115,60 @@ fun UpdaterCard(
         Box(
             modifier = Modifier
                 .fillMaxWidth()
-                .background(brandColor)
-                .updaterHeaderPattern(
-                    patternColor = patternColor,
-                    sheenColor = sheenColor,
-                ),
+                .clip(shape),
         ) {
+            var displayedBitmap by remember { mutableStateOf<ImageBitmap?>(null) }
+            var incomingBitmap by remember { mutableStateOf<ImageBitmap?>(null) }
+            val crossfadeAlpha = remember { Animatable(0f) }
+
+            LaunchedEffect(wallpaperUrl) {
+                val bitmap = bitmapCache.get(wallpaperUrl)?.asImageBitmap()
+                    ?: fetchBitmap(wallpaperUrl)?.also {
+                        bitmapCache.put(wallpaperUrl, it)
+                    }?.asImageBitmap()
+                
+                bitmap ?: return@LaunchedEffect
+
+                incomingBitmap = bitmap
+                crossfadeAlpha.snapTo(0f)
+                crossfadeAlpha.animateTo(1f, animationSpec = tween(WALLPAPER_FADE_IN_MS))
+                displayedBitmap = bitmap
+                incomingBitmap = null
+                crossfadeAlpha.snapTo(1f)
+            }
+
+            if (displayedBitmap == null && incomingBitmap == null) {
+                Box(modifier = Modifier.matchParentSize().background(Color.DarkGray))
+            }
+
+            displayedBitmap?.let { bitmap ->
+                Image(
+                    bitmap = bitmap,
+                    contentDescription = null,
+                    contentScale = ContentScale.Crop,
+                    modifier = Modifier
+                        .matchParentSize()
+                        .blur(radius = WALLPAPER_BLUR_DP.dp),
+                )
+            }
+
+            incomingBitmap?.let { bitmap ->
+                Image(
+                    bitmap = bitmap,
+                    contentDescription = null,
+                    contentScale = ContentScale.Crop,
+                    modifier = Modifier
+                        .matchParentSize()
+                        .graphicsLayer { this.alpha = crossfadeAlpha.value }
+                        .blur(radius = WALLPAPER_BLUR_DP.dp),
+                )
+            }
+
+            Box(
+                modifier = Modifier
+                    .matchParentSize()
+                    .background(Color.Black.copy(alpha = WALLPAPER_SCRIM_ALPHA)),
+            )
             Column(modifier = Modifier.fillMaxWidth()) {
                 Row(
                     modifier = Modifier
@@ -252,23 +176,11 @@ fun UpdaterCard(
                         .padding(SettingsDimension.paddingLarge)
                         .semantics(mergeDescendants = true) {},
                 ) {
-                    Image(
-                        painter = painterResource(R.drawable.lineage_mark_tight),
-                        contentDescription = stringResource(R.string.brand_name),
-                        modifier = Modifier
-                            .width(markWidth)
-                            .alignBy { it.measuredHeight },
-                        contentScale = ContentScale.FillWidth,
-                        // Brand guide: "Use white when on dark backgrounds".
-                        colorFilter = ColorFilter.tint(onBrandColor),
-                    )
-
-                    Spacer(modifier = Modifier.width(markWidth * VERSION_MARK_SPACING_RATIO))
 
                     Column(modifier = Modifier.alignByBaseline()) {
                         Text(
                             text = stringResource(R.string.header_build_version, buildVersion),
-                            style = versionStyle,
+                            style = MaterialTheme.typography.displayMediumEmphasized,
                         )
                         val bylineText = if (!maintainer.isNullOrBlank()) {
                             stringResource(R.string.updater_maintainer_by, maintainer)
@@ -277,7 +189,7 @@ fun UpdaterCard(
                         }
                         Text(
                             text = bylineText,
-                            style = MaterialTheme.typography.titleMedium,
+                            style = MaterialTheme.typography.titleMediumEmphasized,
                             color = onBrandColor.copy(alpha = 0.9f),
                         )
                     }
@@ -321,30 +233,32 @@ fun UpdaterCard(
     }
 }
 
-private fun Modifier.updaterHeaderPattern(
-    patternColor: Color,
-    sheenColor: Color,
-): Modifier = drawWithCache {
-    /*
-     * Snap radius to height so each border lands at a circle start or center,
-     * avoiding random cropped arcs.
-     */
-    val baseRadiusPx = PATTERN_BASE_RADIUS_DP.dp.toPx()
-    val radiusSteps = max(1, (size.height / baseRadiusPx).roundToInt())
-    val radiusPx = size.height / radiusSteps
-    val tileSizePx = radiusPx * PATTERN_TILE_RADIUS_RATIO
+private suspend fun fetchBitmap(url: String): Bitmap? = withContext(Dispatchers.IO) {
+    var connection: HttpURLConnection? = null
+    try {
+        connection = (URL(url).openConnection() as HttpURLConnection).apply {
+            connectTimeout = NETWORK_TIMEOUT_MS
+            readTimeout = NETWORK_TIMEOUT_MS
+            instanceFollowRedirects = true
+        }
+        val bytes = connection.inputStream.use { it.readBytes() }
 
-    val shader = RuntimeShader(PATTERN_SHADER_SRC).apply {
-        setFloatUniform("iTileSize", tileSizePx)
-        setFloatUniform("iRadius", radiusPx)
-        setFloatUniform("iResolution", size.width, size.height)
-        setColorUniform("iPatternColor", patternColor.toArgb())
-        setColorUniform("iSheenColor", sheenColor.toArgb())
-    }
-    val brush = ShaderBrush(shader)
+        val boundsOptions = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+        BitmapFactory.decodeByteArray(bytes, 0, bytes.size, boundsOptions)
 
-    onDrawBehind {
-        drawRect(brush)
+        var sampleSize = 1
+        while (boundsOptions.outWidth / (sampleSize * 2) >= PICSUM_WIDTH &&
+            boundsOptions.outHeight / (sampleSize * 2) >= PICSUM_HEIGHT
+        ) {
+            sampleSize *= 2
+        }
+
+        val decodeOptions = BitmapFactory.Options().apply { inSampleSize = sampleSize }
+        BitmapFactory.decodeByteArray(bytes, 0, bytes.size, decodeOptions)
+    } catch (e: IOException) {
+        null
+    } finally {
+        connection?.disconnect()
     }
 }
 
