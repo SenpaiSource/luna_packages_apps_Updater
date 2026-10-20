@@ -9,11 +9,7 @@ import android.content.res.Configuration
 import android.icu.text.DateFormat
 import android.icu.util.TimeZone
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.shape.CornerSize
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
@@ -21,14 +17,10 @@ import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.tooling.preview.Preview
 import com.android.settingslib.spa.debug.UiModePreviews
-import com.android.settingslib.spa.framework.theme.SettingsDimension
-import com.android.settingslib.spa.framework.theme.SettingsRadius
-import com.android.settingslib.spa.framework.theme.SettingsShape.CornerExtraLarge1
-import com.android.settingslib.spa.framework.theme.SettingsTheme
-import org.lineageos.updater.deviceinfo.actions.DeviceInfoActionButtons
-import org.lineageos.updater.deviceinfo.actions.DeviceInfoTvAction
-import org.lineageos.updater.util.StringUtil
 import java.util.Date
+import org.lineageos.updater.deviceinfo.actions.DeviceInfoTvAction
+import org.lineageos.updater.ui.UpdaterTheme
+import org.lineageos.updater.util.StringUtil
 
 @Composable
 fun DeviceInfoBanner(
@@ -42,14 +34,16 @@ fun DeviceInfoBanner(
     val buildVersion = remember { DeviceInfoUtils.buildVersion }
     val androidVersion = remember { DeviceInfoUtils.androidVersion }
     val deviceName = device?.takeIf { it.isNotBlank() } ?: DeviceInfoUtils.productName
-    val buildDate = remember(locale) {
-        DateFormat.getInstanceForSkeleton("MMMd", locale)
-            .apply { timeZone = TimeZone.getTimeZone("UTC") }
-            .format(Date(DeviceInfoUtils.buildDateTimestamp * 1000L))
-    }
-    val securityPatch = remember(locale) {
-        StringUtil.formatSecurityPatch(context, DeviceInfoUtils.buildSecurityPatch)
-    }
+    val buildDate =
+        remember(locale) {
+            DateFormat.getInstanceForSkeleton("MMMd", locale)
+                .apply { timeZone = TimeZone.getTimeZone("UTC") }
+                .format(Date(DeviceInfoUtils.buildDateTimestamp * 1000L))
+        }
+    val securityPatch =
+        remember(locale) {
+            StringUtil.formatSecurityPatch(context, DeviceInfoUtils.buildSecurityPatch)
+        }
 
     DeviceInfoBanner(
         buildVersion = buildVersion,
@@ -75,11 +69,7 @@ fun DeviceInfoBanner(
     val uiMode = LocalConfiguration.current.uiMode
     val isTv = (uiMode and Configuration.UI_MODE_TYPE_MASK) == Configuration.UI_MODE_TYPE_TELEVISION
 
-    Column(
-        modifier = modifier
-            .fillMaxWidth()
-            .padding(SettingsDimension.itemPadding)
-    ) {
+    Column(modifier = modifier.fillMaxWidth()) {
         UpdaterCard(
             buildVersion = buildVersion,
             androidVersion = androidVersion,
@@ -88,20 +78,9 @@ fun DeviceInfoBanner(
             modifier = Modifier.fillMaxWidth(),
             maintainer = maintainer,
             device = device,
-            shape = if (isTv) {
-                CornerExtraLarge1
-            } else {
-                CornerExtraLarge1.copy(
-                    bottomStart = CornerSize(SettingsRadius.extraSmall2),
-                    bottomEnd = CornerSize(SettingsRadius.extraSmall2),
-                )
-            },
         )
 
-        if (!isTv) {
-            Spacer(modifier = Modifier.height(SettingsDimension.paddingTiny))
-            DeviceInfoActionButtons()
-        } else {
+        if (isTv) {
             DeviceInfoTvAction()
         }
     }
@@ -109,17 +88,16 @@ fun DeviceInfoBanner(
 
 @Preview(
     showBackground = true,
-    uiMode = Configuration.UI_MODE_TYPE_TELEVISION or Configuration.UI_MODE_NIGHT_NO
+    uiMode = Configuration.UI_MODE_TYPE_TELEVISION or Configuration.UI_MODE_NIGHT_NO,
 )
 @Preview(
     showBackground = true,
-    uiMode = Configuration.UI_MODE_TYPE_TELEVISION or Configuration.UI_MODE_NIGHT_YES
+    uiMode = Configuration.UI_MODE_TYPE_TELEVISION or Configuration.UI_MODE_NIGHT_YES,
 )
-
 @UiModePreviews
 @Composable
 private fun DeviceInfoBannerPreview() {
-    SettingsTheme {
+    UpdaterTheme {
         DeviceInfoBanner(
             buildVersion = "3.12",
             androidVersion = "16",

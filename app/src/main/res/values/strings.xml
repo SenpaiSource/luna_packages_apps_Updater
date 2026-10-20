@@ -197,4 +197,19 @@
     <string name="updater_link_forum">Forum</string>
     <string name="updater_build_unofficial">Unofficial</string>
     <string name="updater_maintainer_by">by <xliff:g id="maintainer" example="Ghosuto">%1$s</xliff:g></string>
+    <string name="navigate_back">Back</string>
+    <string name="updater_installed_version">Installed version</string>
+    <string name="updater_updates">Updates</string>
+    <string name="updater_updates_summary">Keep your device up to date.</string>
+    <string name="updater_tools">Manage updates</string>
+    <string name="updater_community">Community</string>
+    <string name="updater_available_builds">Available builds</string>
+    <string name="updater_preferences_title">Update preferences</string>
+    <string name="updater_preferences_description">Choose how your device checks for and installs updates.</string>
+    <string name="updater_never_checked">No checks yet</string>
+    <string name="updater_expand_update">Show update details</string>
+    <string name="updater_collapse_update">Hide update details</string>
+    <string name="updater_expanded">Expanded</string>
+    <string name="updater_collapsed">Collapsed</string>
+    <string name="updater_more_actions">More update actions</string>
 </resources>

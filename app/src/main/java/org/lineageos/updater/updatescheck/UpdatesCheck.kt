@@ -9,16 +9,35 @@ import android.content.Context
 import android.os.SystemClock
 import android.text.format.DateFormat
 import android.text.format.DateUtils
-import androidx.annotation.RawRes
-import androidx.annotation.StringRes
+import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.animateContentSize
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.scaleIn
+import androidx.compose.animation.scaleOut
+import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.rounded.CloudOff
+import androidx.compose.material.icons.rounded.Refresh
+import androidx.compose.material.icons.rounded.SyncProblem
+import androidx.compose.material.icons.rounded.SystemUpdate
+import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
-import androidx.compose.material3.FilledTonalButton
+import androidx.compose.material3.ContainedLoadingIndicator
+import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
+import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -31,27 +50,24 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.LiveRegionMode
+import androidx.compose.ui.semantics.liveRegion
 import androidx.compose.ui.semantics.semantics
-import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
-import com.airbnb.lottie.compose.LottieConstants
-import com.android.settingslib.spa.framework.theme.SettingsDimension
-import com.android.settingslib.spa.widget.ui.SettingsBody
+import java.util.Date
 import kotlinx.coroutines.delay
 import org.lineageos.updater.R
-import org.lineageos.updater.ui.Lottie
-import java.util.Date
+import org.lineageos.updater.ui.UpdaterEmblem
 
 private const val MIN_CHECKING_DURATION_MILLIS = 2_000L
 
-// Matches SettingsLib's expressive zero-state background size.
-private val AnimationSize = 160.dp
-
 sealed interface UpdatesCheckState {
     data object Idle : UpdatesCheckState
+
     data object Checking : UpdatesCheckState
+
     data object NoInternet : UpdatesCheckState
+
     data object Error : UpdatesCheckState
 }
 
@@ -61,17 +77,17 @@ data class UpdatesCheckModel(
     val canCheckForUpdates: Boolean,
 )
 
-class UpdatesCheckUiState internal constructor(
-    internal val displayedState: UpdatesCheckState,
-) {
-    val isStatusVisible = when (displayedState) {
-        UpdatesCheckState.Idle -> false
-        UpdatesCheckState.Checking,
-        UpdatesCheckState.NoInternet,
-        UpdatesCheckState.Error -> true
-    }
+class UpdatesCheckUiState internal constructor(internal val displayedState: UpdatesCheckState) {
+    val isStatusVisible =
+        when (displayedState) {
+            UpdatesCheckState.Idle -> false
+            UpdatesCheckState.Checking,
+            UpdatesCheckState.NoInternet,
+            UpdatesCheckState.Error -> true
+        }
 }
 
+@OptIn(ExperimentalMaterial3ExpressiveApi::class)
 @Composable
 fun UpdatesCheck(
     model: UpdatesCheckModel,
@@ -80,100 +96,120 @@ fun UpdatesCheck(
     modifier: Modifier = Modifier,
 ) {
     val context = LocalContext.current
-    val lastCheckedText = remember(model.lastCheckedTimestamp) {
-        formatLastCheckedText(context, model.lastCheckedTimestamp)
-    }
-
-    Column(
-        modifier = modifier
-            .fillMaxWidth()
-            .padding(SettingsDimension.itemPadding),
-        horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.spacedBy(SettingsDimension.itemPaddingVertical),
+    val colors = MaterialTheme.colorScheme
+    val state = uiState.displayedState
+    val isError = state == UpdatesCheckState.Error || state == UpdatesCheckState.NoInternet
+    val isChecking = state == UpdatesCheckState.Checking
+    val motionScheme = MaterialTheme.motionScheme
+    val containerColor by
+        animateColorAsState(
+            if (isError) colors.errorContainer else colors.surfaceContainer,
+            motionScheme.fastEffectsSpec(),
+            label = "check status color",
+        )
+    Surface(
+        modifier.fillMaxWidth(),
+        shape = MaterialTheme.shapes.extraLarge,
+        color = containerColor,
+        contentColor = if (isError) colors.onErrorContainer else colors.onSurface,
     ) {
-        when (uiState.displayedState) {
-            UpdatesCheckState.Idle -> Unit
-            UpdatesCheckState.Checking -> StatusContent(
-                R.raw.sysupdater_progress,
-                R.string.checking_for_updates,
-            )
-
-            UpdatesCheckState.NoInternet -> StatusContent(
-                R.raw.sysupdater_error,
-                R.string.check_your_internet_connection,
-                iterations = 1,
-            )
-
-            UpdatesCheckState.Error -> StatusContent(
-                R.raw.sysupdater_error,
-                R.string.updates_check_failed,
-                iterations = 1,
+        Column(
+            Modifier.animateContentSize(motionScheme.defaultSpatialSpec()).padding(24.dp),
+            verticalArrangement = Arrangement.spacedBy(20.dp),
+        ) {
+            AnimatedContent(
+                targetState = state,
+                transitionSpec = {
+                    (fadeIn(motionScheme.fastEffectsSpec()) +
+                        scaleIn(motionScheme.fastSpatialSpec(), initialScale = 0.96f)) togetherWith
+                        (fadeOut(motionScheme.fastEffectsSpec()) +
+                            scaleOut(motionScheme.fastSpatialSpec(), targetScale = 0.96f))
+                },
+                label = "check status",
+            ) { displayedState ->
+                val statusIsError =
+                    displayedState == UpdatesCheckState.Error ||
+                        displayedState == UpdatesCheckState.NoInternet
+                val title =
+                    stringResource(
+                        when (displayedState) {
+                            UpdatesCheckState.Idle -> R.string.updater_updates
+                            UpdatesCheckState.Checking -> R.string.checking_for_updates
+                            UpdatesCheckState.NoInternet -> R.string.check_your_internet_connection
+                            UpdatesCheckState.Error -> R.string.updates_check_failed
+                        }
+                    )
+                Row(
+                    horizontalArrangement = Arrangement.spacedBy(16.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    if (displayedState == UpdatesCheckState.Checking) {
+                        ContainedLoadingIndicator(Modifier.size(56.dp))
+                    } else {
+                        UpdaterEmblem(
+                            icon =
+                                when (displayedState) {
+                                    UpdatesCheckState.NoInternet -> Icons.Rounded.CloudOff
+                                    UpdatesCheckState.Error -> Icons.Rounded.SyncProblem
+                                    else -> Icons.Rounded.SystemUpdate
+                                },
+                            modifier = Modifier.size(56.dp),
+                            containerColor =
+                                if (statusIsError) colors.error else colors.primaryContainer,
+                            contentColor =
+                                if (statusIsError) colors.onError else colors.onPrimaryContainer,
+                        )
+                    }
+                    Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                        Text(
+                            title,
+                            Modifier.semantics { liveRegion = LiveRegionMode.Polite },
+                            style = MaterialTheme.typography.titleLargeEmphasized,
+                        )
+                        if (displayedState == UpdatesCheckState.Idle) {
+                            Text(
+                                stringResource(R.string.updater_updates_summary),
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = colors.onSurfaceVariant,
+                            )
+                        }
+                    }
+                }
+            }
+            if (model.canCheckForUpdates && !isChecking) {
+                Button(
+                    onClick = onCheckClick,
+                    modifier =
+                        Modifier.fillMaxWidth()
+                            .heightIn(min = ButtonDefaults.MediumContainerHeight),
+                    shapes = ButtonDefaults.shapesFor(ButtonDefaults.MediumContainerHeight),
+                    contentPadding =
+                        ButtonDefaults.contentPaddingFor(ButtonDefaults.MediumContainerHeight),
+                ) {
+                    Icon(Icons.Rounded.Refresh, null)
+                    Spacer(Modifier.width(8.dp))
+                    Text(
+                        stringResource(R.string.check_for_updates),
+                        style = ButtonDefaults.textStyleFor(ButtonDefaults.MediumContainerHeight),
+                    )
+                }
+            }
+            Text(
+                if (model.lastCheckedTimestamp > 0L) {
+                    formatLastCheckedText(context, model.lastCheckedTimestamp)
+                } else {
+                    stringResource(R.string.updater_never_checked)
+                },
+                style = MaterialTheme.typography.bodySmall,
+                color = if (isError) colors.onErrorContainer else colors.onSurfaceVariant,
             )
         }
-
-        if (model.canCheckForUpdates && uiState.displayedState !is UpdatesCheckState.Checking) {
-            CheckForUpdatesButton(onClick = onCheckClick)
-        }
-
-        Text(
-            text = lastCheckedText,
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(end = SettingsDimension.itemPaddingEnd),
-            style = MaterialTheme.typography.bodyMedium,
-            textAlign = TextAlign.End,
-        )
     }
 }
 
+/** Keeps the checking state visible long enough for the progress animation to be readable. */
 @Composable
-private fun CheckForUpdatesButton(
-    onClick: () -> Unit,
-    modifier: Modifier = Modifier,
-) {
-    FilledTonalButton(
-        onClick = onClick,
-        modifier = modifier.fillMaxWidth(),
-        colors = ButtonDefaults.filledTonalButtonColors(
-            containerColor = MaterialTheme.colorScheme.surfaceContainerHighest,
-        ),
-    ) {
-        Text(text = stringResource(R.string.check_for_updates))
-    }
-}
-
-/**
- * Shows the animated status illustration and its matching message.
- */
-@Composable
-private fun StatusContent(
-    @RawRes animationResId: Int,
-    @StringRes textResId: Int,
-    iterations: Int = LottieConstants.IterateForever,
-) {
-    val text = stringResource(textResId)
-    Column(
-        horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.spacedBy(SettingsDimension.itemPaddingVertical),
-    ) {
-        Lottie(
-            resId = animationResId,
-            modifier = Modifier
-                .size(AnimationSize)
-                .semantics { contentDescription = text },
-            iterations = iterations,
-        )
-        SettingsBody(text)
-    }
-}
-
-/**
- * Keeps the checking state visible long enough for the progress animation to be readable.
- */
-@Composable
-private fun rememberStateWithMinimumCheckingDuration(
-    state: UpdatesCheckState,
-): UpdatesCheckState {
+private fun rememberStateWithMinimumCheckingDuration(state: UpdatesCheckState): UpdatesCheckState {
     var displayedState by remember { mutableStateOf(state) }
     var checkingStartedAtMillis by remember { mutableLongStateOf(0L) }
 
@@ -197,9 +233,7 @@ private fun rememberStateWithMinimumCheckingDuration(
 }
 
 @Composable
-internal fun rememberUpdatesCheckUiState(
-    state: UpdatesCheckState,
-): UpdatesCheckUiState {
+internal fun rememberUpdatesCheckUiState(state: UpdatesCheckState): UpdatesCheckUiState {
     val displayedState = rememberStateWithMinimumCheckingDuration(state)
     return remember(displayedState) { UpdatesCheckUiState(displayedState) }
 }
@@ -209,23 +243,19 @@ internal fun rememberUpdatesCheckUiState(
  *
  * Today's checks show only the time. Older checks show both date and time.
  */
-private fun formatLastCheckedText(
-    context: Context,
-    timestampMillis: Long,
-): String {
+private fun formatLastCheckedText(context: Context, timestampMillis: Long): String {
     val time = DateFormat.getTimeFormat(context).format(Date(timestampMillis))
 
     if (DateUtils.isToday(timestampMillis)) {
         return context.getString(R.string.header_last_updates_check_time, time)
     }
 
-    val date = DateUtils.formatDateTime(
-        context,
-        timestampMillis,
-        DateUtils.FORMAT_SHOW_DATE or
-                DateUtils.FORMAT_ABBREV_MONTH or
-                DateUtils.FORMAT_NO_YEAR,
-    )
+    val date =
+        DateUtils.formatDateTime(
+            context,
+            timestampMillis,
+            DateUtils.FORMAT_SHOW_DATE or DateUtils.FORMAT_ABBREV_MONTH or DateUtils.FORMAT_NO_YEAR,
+        )
 
     return context.getString(R.string.header_last_updates_check, date, time)
 }

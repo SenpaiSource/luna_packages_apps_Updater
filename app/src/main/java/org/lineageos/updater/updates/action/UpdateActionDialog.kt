@@ -5,15 +5,18 @@
 
 package org.lineageos.updater.updates.action
 
+import androidx.compose.foundation.layout.size
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.rounded.SystemUpdate
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
-import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.res.vectorResource
 import androidx.compose.ui.text.AnnotatedString
-import com.android.settingslib.spa.widget.dialog.AlertDialogButton
-import com.android.settingslib.spa.widget.dialog.SettingsAlertDialogWithIcon
-import org.lineageos.updater.R
+import androidx.compose.ui.unit.dp
+import org.lineageos.updater.ui.UpdaterEmblem
 
 data class AlertDialogState(
     val onConfirm: () -> Unit = {},
@@ -23,25 +26,29 @@ data class AlertDialogState(
 )
 
 @Composable
-fun UpdateActionDialog(
-    dialog: AlertDialogState,
-    onDismiss: () -> Unit,
-) {
-    SettingsAlertDialogWithIcon(
+fun UpdateActionDialog(dialog: AlertDialogState, onDismiss: () -> Unit) {
+    AlertDialog(
         onDismissRequest = onDismiss,
-        icon = ImageVector.vectorResource(R.drawable.ic_notification),
-        confirmButton = AlertDialogButton(text = stringResource(android.R.string.ok)) {
-            onDismiss()
-            dialog.onConfirm()
-        },
-        dismissButton = if (dialog.showDismiss) {
-            AlertDialogButton(text = stringResource(android.R.string.cancel)) {
-                onDismiss()
+        icon = { UpdaterEmblem(Icons.Rounded.SystemUpdate, Modifier.size(56.dp)) },
+        confirmButton = {
+            TextButton(
+                onClick = {
+                    onDismiss()
+                    dialog.onConfirm()
+                }
+            ) {
+                Text(stringResource(android.R.string.ok))
             }
-        } else {
-            null
         },
-        title = dialog.title,
-        text = { Text(text = dialog.text) },
+        dismissButton =
+            if (dialog.showDismiss) {
+                {
+                    TextButton(onClick = onDismiss) {
+                        Text(stringResource(android.R.string.cancel))
+                    }
+                }
+            } else null,
+        title = { Text(dialog.title) },
+        text = { Text(dialog.text) },
     )
 }

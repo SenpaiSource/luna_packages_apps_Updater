@@ -1,46 +1,117 @@
 /*
  * SPDX-FileCopyrightText: The LineageOS Project
+ * SPDX-FileCopyrightText: 2026 Lunaris AOSP
  * SPDX-License-Identifier: Apache-2.0
  */
 
+@file:OptIn(
+    androidx.compose.material3.ExperimentalMaterial3ExpressiveApi::class,
+    androidx.compose.foundation.layout.ExperimentalLayoutApi::class,
+)
+
 package org.lineageos.updater.preferences
 
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.FlowRow
+import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.selection.selectableGroup
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.rounded.Check
+import androidx.compose.material.icons.rounded.Schedule
+import androidx.compose.material.icons.rounded.Tune
+import androidx.compose.material3.ButtonGroupDefaults
+import androidx.compose.material3.Icon
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Surface
+import androidx.compose.material3.Text
+import androidx.compose.material3.ToggleButton
+import androidx.compose.material3.ToggleButtonDefaults
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.IntState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.role
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import com.android.settingslib.spa.widget.preference.ListPreference
-import com.android.settingslib.spa.widget.preference.ListPreferenceModel
-import com.android.settingslib.spa.widget.preference.ListPreferenceOption
-import com.android.settingslib.spa.widget.preference.SwitchPreference
-import com.android.settingslib.spa.widget.preference.SwitchPreferenceModel
-import com.android.settingslib.spa.widget.scaffold.RegularScaffold
-import com.android.settingslib.spa.widget.ui.Category
+import java.io.File
 import kotlinx.coroutines.launch
 import org.lineageos.updater.R
 import org.lineageos.updater.UpdaterApplication
 import org.lineageos.updater.data.CheckInterval
 import org.lineageos.updater.data.UserPreferencesRepository
 import org.lineageos.updater.deviceinfo.DeviceInfoUtils
+import org.lineageos.updater.ui.UpdaterEmblem
+import org.lineageos.updater.ui.UpdaterGroup
+import org.lineageos.updater.ui.UpdaterScaffold
+import org.lineageos.updater.ui.UpdaterSwitchRow
 import org.lineageos.updater.util.BatteryMonitor
-import java.io.File
 
 @Composable
-fun PreferencesScreen() {
+fun PreferencesScreen(onBack: () -> Unit) {
     val context = LocalContext.current
     val application = remember(context) { context.applicationContext as UpdaterApplication }
-    val repository = application.userPreferencesRepository
-    val batteryMonitor = application.batteryMonitor
     val isABDevice = remember { DeviceInfoUtils.isABDevice }
     val showRecoveryUpdate = remember { installRecoveryScriptExists() }
-    RegularScaffold(title = stringResource(R.string.display_name)) {
-        PreferencesContent(repository, batteryMonitor, isABDevice, showRecoveryUpdate)
+    UpdaterScaffold(title = stringResource(R.string.updater_preferences_title), onBack = onBack) {
+        padding ->
+        Box(Modifier.fillMaxSize().padding(padding), contentAlignment = Alignment.TopCenter) {
+            Column(
+                Modifier.widthIn(max = 720.dp)
+                    .fillMaxSize()
+                    .verticalScroll(rememberScrollState())
+                    .padding(20.dp),
+                verticalArrangement = Arrangement.spacedBy(28.dp),
+            ) {
+                Surface(
+                    shape = MaterialTheme.shapes.extraLarge,
+                    color = MaterialTheme.colorScheme.secondaryContainer,
+                ) {
+                    Row(
+                        Modifier.fillMaxWidth().padding(24.dp),
+                        horizontalArrangement = Arrangement.spacedBy(16.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        UpdaterEmblem(
+                            Icons.Rounded.Tune,
+                            Modifier.size(56.dp),
+                            containerColor = MaterialTheme.colorScheme.secondary,
+                            contentColor = MaterialTheme.colorScheme.onSecondary,
+                        )
+                        Text(
+                            stringResource(R.string.updater_preferences_description),
+                            Modifier.weight(1f),
+                            style = MaterialTheme.typography.bodyLarge,
+                        )
+                    }
+                }
+                PreferencesContent(
+                    application.userPreferencesRepository,
+                    application.batteryMonitor,
+                    isABDevice,
+                    showRecoveryUpdate,
+                )
+            }
+        }
     }
 }
 
@@ -53,126 +124,177 @@ private fun PreferencesContent(
 ) {
     val coroutineScope = rememberCoroutineScope()
     val abPerfMode by repository.abPerfModeFlow.collectAsStateWithLifecycle(false)
-    val batteryState by batteryMonitor.batteryState.collectAsStateWithLifecycle(
-        batteryMonitor.currentBatteryState
-    )
+    val batteryState by
+        batteryMonitor.batteryState.collectAsStateWithLifecycle(batteryMonitor.currentBatteryState)
     val autoDelete by repository.autoDeleteFlow.collectAsStateWithLifecycle(true)
     val streamUpdates by repository.streamUpdatesFlow.collectAsStateWithLifecycle(true)
-    val checkInterval by repository.checkIntervalFlow.collectAsStateWithLifecycle(CheckInterval.default)
-    val meteredNetworkWarning by repository.meteredNetworkWarningFlow.collectAsStateWithLifecycle(
-        true
-    )
-    val periodicCheckEnabled by repository.periodicCheckEnabledFlow.collectAsStateWithLifecycle(true)
+    val checkInterval by
+        repository.checkIntervalFlow.collectAsStateWithLifecycle(CheckInterval.default)
+    val meteredNetworkWarning by
+        repository.meteredNetworkWarningFlow.collectAsStateWithLifecycle(true)
+    val periodicCheckEnabled by
+        repository.periodicCheckEnabledFlow.collectAsStateWithLifecycle(true)
     var recoveryUpdateEnabled by remember { mutableStateOf(repository.getRecoveryUpdateEnabled()) }
 
-    val autoUpdatesCheckSummary = stringResource(R.string.menu_auto_updates_check_summary)
-    val autoDeleteUpdatesSummary = stringResource(R.string.menu_auto_delete_updates_summary)
-    val streamUpdatesSummary = stringResource(R.string.menu_stream_updates_summary)
-    val meteredNetworkWarningSummary = stringResource(R.string.menu_metered_network_warning_summary)
-    val abPerfModeSummary = stringResource(R.string.menu_ab_perf_mode_summary)
-    val abPerfModeChargingSummary = stringResource(R.string.menu_ab_perf_mode_summary_charging)
-    val updateRecoverySummary = stringResource(R.string.menu_update_recovery_summary)
-    val selectedCheckInterval = remember(checkInterval) {
-        object : IntState {
-            override val intValue = checkInterval.ordinal
-        }
-    }
-
-    Category(title = stringResource(R.string.pref_category_background_sync)) {
-        SwitchPreference(object : SwitchPreferenceModel {
-            override val title = stringResource(R.string.menu_auto_updates_check)
-            override val summary = { autoUpdatesCheckSummary }
-            override val checked = { periodicCheckEnabled }
-            override val onCheckedChange: (Boolean) -> Unit = { value ->
+    UpdaterGroup(title = stringResource(R.string.pref_category_background_sync)) {
+        UpdaterSwitchRow(
+            title = stringResource(R.string.menu_auto_updates_check),
+            summary = stringResource(R.string.menu_auto_updates_check_summary),
+            checked = periodicCheckEnabled,
+            highlighted = true,
+            onCheckedChange = { value ->
                 coroutineScope.launch { repository.setPeriodicCheckEnabled(value) }
-            }
-        })
-
-        ListPreference(object : ListPreferenceModel {
-            override val title = stringResource(R.string.menu_auto_updates_check_interval)
-            override val enabled = { periodicCheckEnabled }
-            override val options = listOf(
-                ListPreferenceOption(
-                    id = CheckInterval.DAILY.ordinal,
-                    text = stringResource(R.string.time_unit_day),
-                ),
-                ListPreferenceOption(
-                    id = CheckInterval.WEEKLY.ordinal,
-                    text = stringResource(R.string.time_unit_week),
-                ),
-                ListPreferenceOption(
-                    id = CheckInterval.MONTHLY.ordinal,
-                    text = stringResource(R.string.time_unit_month),
-                ),
-            )
-            override val selectedId = selectedCheckInterval
-            override val onIdSelected: (Int) -> Unit = { id ->
-                val interval = CheckInterval.entries.getOrElse(id) { CheckInterval.default }
+            },
+        )
+        CheckIntervalSelector(
+            selectedInterval = checkInterval,
+            enabled = periodicCheckEnabled,
+            onSelect = { interval ->
                 coroutineScope.launch { repository.setCheckInterval(interval) }
-            }
-        })
+            },
+        )
     }
 
-    Category(title = stringResource(R.string.pref_category_download_install)) {
+    UpdaterGroup(title = stringResource(R.string.pref_category_download_install)) {
         if (isABDevice) {
-            SwitchPreference(object : SwitchPreferenceModel {
-                override val title = stringResource(R.string.menu_stream_updates)
-                override val summary = { streamUpdatesSummary }
-                override val checked = { streamUpdates }
-                override val onCheckedChange: (Boolean) -> Unit = { value ->
+            UpdaterSwitchRow(
+                title = stringResource(R.string.menu_stream_updates),
+                summary = stringResource(R.string.menu_stream_updates_summary),
+                checked = streamUpdates,
+                onCheckedChange = { value ->
                     coroutineScope.launch { repository.setStreamUpdates(value) }
-                }
-            })
+                },
+            )
         } else {
-            SwitchPreference(object : SwitchPreferenceModel {
-                override val title = stringResource(R.string.menu_auto_delete_updates)
-                override val summary = { autoDeleteUpdatesSummary }
-                override val checked = { autoDelete }
-                override val onCheckedChange: (Boolean) -> Unit = { value ->
+            UpdaterSwitchRow(
+                title = stringResource(R.string.menu_auto_delete_updates),
+                summary = stringResource(R.string.menu_auto_delete_updates_summary),
+                checked = autoDelete,
+                onCheckedChange = { value ->
                     coroutineScope.launch { repository.setAutoDelete(value) }
-                }
-            })
+                },
+            )
         }
-
-        SwitchPreference(object : SwitchPreferenceModel {
-            override val title = stringResource(R.string.menu_metered_network_warning)
-            override val summary = { meteredNetworkWarningSummary }
-            override val checked = { meteredNetworkWarning }
-            override val onCheckedChange: (Boolean) -> Unit = { value ->
+        UpdaterSwitchRow(
+            title = stringResource(R.string.menu_metered_network_warning),
+            summary = stringResource(R.string.menu_metered_network_warning_summary),
+            checked = meteredNetworkWarning,
+            onCheckedChange = { value ->
                 coroutineScope.launch { repository.setMeteredNetworkWarning(value) }
-            }
-        })
-
+            },
+        )
         if (isABDevice) {
-            SwitchPreference(object : SwitchPreferenceModel {
-                override val title = stringResource(R.string.menu_ab_perf_mode)
-                override val summary = {
-                    if (batteryState.isAcCharging) {
-                        abPerfModeChargingSummary
-                    } else {
-                        abPerfModeSummary
-                    }
-                }
-                override val changeable = { !batteryState.isAcCharging }
-                override val checked = { batteryState.isAcCharging || abPerfMode }
-                override val onCheckedChange: (Boolean) -> Unit = { value ->
+            UpdaterSwitchRow(
+                title = stringResource(R.string.menu_ab_perf_mode),
+                summary =
+                    stringResource(
+                        if (batteryState.isAcCharging) R.string.menu_ab_perf_mode_summary_charging
+                        else R.string.menu_ab_perf_mode_summary
+                    ),
+                checked = batteryState.isAcCharging || abPerfMode,
+                enabled = !batteryState.isAcCharging,
+                onCheckedChange = { value ->
                     coroutineScope.launch { repository.setAbPerfMode(value) }
-                }
-            })
+                },
+            )
         }
-
         if (showRecoveryUpdate) {
-            SwitchPreference(object : SwitchPreferenceModel {
-                override val title = stringResource(R.string.menu_update_recovery)
-                override val summary = { updateRecoverySummary }
-                override val checked = { recoveryUpdateEnabled }
-                override val onCheckedChange: (Boolean) -> Unit = { value ->
+            UpdaterSwitchRow(
+                title = stringResource(R.string.menu_update_recovery),
+                summary = stringResource(R.string.menu_update_recovery_summary),
+                checked = recoveryUpdateEnabled,
+                onCheckedChange = { value ->
                     recoveryUpdateEnabled = value
                     repository.setRecoveryUpdateEnabled(value)
-                }
-            })
+                },
+            )
         }
     }
 }
+
+@Composable
+private fun CheckIntervalSelector(
+    selectedInterval: CheckInterval,
+    enabled: Boolean,
+    onSelect: (CheckInterval) -> Unit,
+) {
+    Surface(
+        shape = RoundedCornerShape(4.dp),
+        color = MaterialTheme.colorScheme.surfaceContainerLow,
+    ) {
+        Column(
+            Modifier.fillMaxWidth().padding(20.dp),
+            verticalArrangement = Arrangement.spacedBy(16.dp),
+        ) {
+            Row(
+                horizontalArrangement = Arrangement.spacedBy(12.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Icon(
+                    Icons.Rounded.Schedule,
+                    null,
+                    Modifier.size(20.dp),
+                    tint =
+                        MaterialTheme.colorScheme.primary.copy(alpha = if (enabled) 1f else 0.38f),
+                )
+                Text(
+                    stringResource(R.string.menu_auto_updates_check_interval),
+                    style = MaterialTheme.typography.titleMediumEmphasized,
+                    color =
+                        MaterialTheme.colorScheme.onSurface.copy(alpha = if (enabled) 1f else 0.38f),
+                )
+            }
+            FlowRow(
+                Modifier.fillMaxWidth().selectableGroup(),
+                horizontalArrangement =
+                    Arrangement.spacedBy(ButtonGroupDefaults.ConnectedSpaceBetween),
+                verticalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                CheckInterval.entries.forEachIndexed { index, interval ->
+                    ToggleButton(
+                        checked = selectedInterval == interval,
+                        onCheckedChange = { checked -> if (checked) onSelect(interval) },
+                        modifier =
+                            Modifier.heightIn(min = 48.dp).semantics { role = Role.RadioButton },
+                        enabled = enabled,
+                        shapes =
+                            when (index) {
+                                0 -> ButtonGroupDefaults.connectedLeadingButtonShapes()
+                                CheckInterval.entries.lastIndex ->
+                                    ButtonGroupDefaults.connectedTrailingButtonShapes()
+                                else -> ButtonGroupDefaults.connectedMiddleButtonShapes()
+                            },
+                        contentPadding = PaddingValues(horizontal = 12.dp, vertical = 12.dp),
+                    ) {
+                        if (selectedInterval == interval) {
+                            Icon(
+                                Icons.Rounded.Check,
+                                null,
+                                Modifier.size(ToggleButtonDefaults.IconSize),
+                            )
+                        }
+                        Text(
+                            intervalLabel(interval),
+                            Modifier.padding(
+                                start = if (selectedInterval == interval) 6.dp else 0.dp
+                            ),
+                            style = MaterialTheme.typography.labelLargeEmphasized,
+                        )
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun intervalLabel(interval: CheckInterval) =
+    stringResource(
+        when (interval) {
+            CheckInterval.DAILY -> R.string.time_unit_day
+            CheckInterval.WEEKLY -> R.string.time_unit_week
+            CheckInterval.MONTHLY -> R.string.time_unit_month
+        }
+    )
 
 private fun installRecoveryScriptExists() = File("/vendor/bin/install-recovery.sh").exists()
